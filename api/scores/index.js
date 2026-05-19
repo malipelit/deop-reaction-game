@@ -8,7 +8,7 @@ module.exports = async function (context, req) {
     const tableName = process.env.TABLE_NAME || "scores";
     const client = TableClient.fromConnectionString(conn, tableName);
 
-    // Query all entities in partition "scores"
+    // Query all the entities in partition "scores"
     const results = [];
     const filter = `PartitionKey eq 'scores'`;
 
