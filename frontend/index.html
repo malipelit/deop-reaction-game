@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Reaction Test</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 0; background: #0b1220; color: #e5e7eb; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 20px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    input { padding: 10px 12px; border-radius: 10px; border: 1px solid #334155; background:#0f172a; color:#e5e7eb; }
+    button { padding: 10px 14px; border-radius: 10px; border: 0; cursor: pointer; }
+    button.primary { background: #3b82f6; color: white; }
+    button.secondary { background: #334155; color: white; }
+    .panel { background:#0f172a; border:1px solid #1f2937; border-radius: 16px; padding: 16px; }
+    .arena { height: 300px; border-radius: 16px; display:flex; align-items:center; justify-content:center;
+             user-select:none; cursor:pointer; font-size: 28px; font-weight:700; border:1px solid #1f2937; }
+    .muted { color:#94a3b8; }
+    table { width:100%; border-collapse: collapse; margin-top:10px; }
+    th,td { text-align:left; padding: 8px; border-top:1px solid #1f2937; }
+    .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; background:#334155; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Reaction Test</h1>
+    <p class="muted">Enter your name, press Start, then click as soon as RED turns GREEN.</p>
+
+    <div class="row">
+      <div class="panel">
+        <div class="row">
+          <label>Player:&nbsp;</label>
+          <input id="player" maxlength="24" placeholder="e.g., Ali" />
+          <button id="startBtn" class="primary">Start</button>
+          <button id="resetBtn" class="secondary">Reset</button>
+          <span id="apiStatus" class="badge">API: unknown</span>
+        </div>
+        <p id="msg" class="muted" style="margin:10px 0 0;">Ready.</p>
+        <p id="result" style="margin:6px 0 0; font-size:18px; font-weight:600;"></p>
+      </div>
+    </div>
+
+    <div id="arena" class="arena" style="background:#ef4444; margin-top:14px;">READY</div>
+
+    <div class="panel" style="margin-top:14px;">
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;">Leaderboard (best per player)</div>
+          <div class="muted" style="font-size:12px;">Top fastest best times</div>
+        </div>
+        <button id="refreshBtn" class="secondary">Refresh</button>
+      </div>
+
+      <table>
+        <thead>
+          <tr class="muted">
+            <th>#</th>
+            <th>Name</th>
+            <th>Best (ms)</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody id="board"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+  // ✅ Set this to your Function App base URL:
+  const API_BASE = "https://func-game-cufgf5bgdvgbceb6.eastus-01.azurewebsites.net/api";
+
+  let status = "idle"; // idle | waiting | go | tooSoon | result
+  let timerId = null;
+  let goAt = null;
+
+  const elPlayer = document.getElementById("player");
+  const elStart = document.getElementById("startBtn");
+  const elReset = document.getElementById("resetBtn");
+  const elArena = document.getElementById("arena");
+  const elMsg = document.getElementById("msg");
+  const elResult = document.getElementById("result");
+  const elBoard = document.getElementById("board");
+  const elRefresh = document.getElementById("refreshBtn");
+  const elApi = document.getElementById("apiStatus");
+
+  function setArena(color, text) {
+    elArena.style.background = color;
+    elArena.textContent = text;
+  }
+
+  function reset(msg="Ready.") {
+    if (timerId) clearTimeout(timerId);
+    timerId = null;
+    goAt = null;
+    status = "idle";
+    elMsg.textContent = msg;
+    elResult.textContent = "";
+    setArena("#ef4444", "READY");
+  }
+
+  function start() {
+    const player = elPlayer.value.trim();
+    if (!player) {
+      elMsg.textContent = "Please enter a name first.";
+      return;
+    }
+
+    reset("Wait for GREEN… then click fast!");
+    status = "waiting";
+    setArena("#ef4444", "WAIT…");
+
+    const delay = Math.floor(1000 + Math.random() * 3500);
+    timerId = setTimeout(() => {
+      goAt = performance.now();
+      status = "go";
+      setArena("#22c55e", "CLICK!");
+      elMsg.textContent = "CLICK NOW!";
+    }, delay);
+  }
+
+  async function postScore(player, reactionMs) {
+    const r = await fetch(`${API_BASE}/score`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ player, reactionMs })
+    });
+    if (!r.ok) throw new Error("POST failed");
+    return r.json();
+  }
+
+  async function getScores() {
+    const r = await fetch(`${API_BASE}/scores?top=10`);
+    if (!r.ok) throw new Error("GET failed");
+    return r.json();
+  }
+
+  async function refreshLeaderboard() {
+    try {
+      const rows = await getScores();
+      elApi.textContent = "API: connected";
+      elApi.style.background = "#16a34a";
+
+      elBoard.innerHTML = "";
+      rows.forEach((x, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${i+1}</td>
+          <td>${x.player ?? ""}</td>
+          <td><b>${x.bestMs ?? ""}</b></td>
+          <td class="muted">${x.updatedAt ? new Date(x.updatedAt).toLocaleString() : ""}</td>
+        `;
+        elBoard.appendChild(tr);
+      });
+
+      if (rows.length === 0) {
+        elBoard.innerHTML = `<tr><td colspan="4" class="muted" style="padding:14px;">No scores yet.</td></tr>`;
+      }
+    } catch (e) {
+      elApi.textContent = "API: not connected";
+      elApi.style.background = "#334155";
+    }
+  }
+
+  function arenaClick() {
+    if (status === "waiting") {
+      // too soon
+      if (timerId) clearTimeout(timerId);
+      timerId = null;
+      status = "tooSoon";
+      setArena("#f59e0b", "TOO SOON");
+      elMsg.textContent = "Too soon! Press Start to try again.";
+      return;
+    }
+
+    if (status === "go") {
+      const ms = Math.round(performance.now() - goAt);
+      status = "result";
+      setArena("#0f172a", "DONE");
+      elResult.textContent = `${ms} ms`;
+      elMsg.textContent = "Submitting score…";
+
+      const player = elPlayer.value.trim();
+      postScore(player, ms)
+        .then(() => {
+          elMsg.textContent = "Saved! Press Start for another round.";
+          refreshLeaderboard();
+        })
+        .catch(() => {
+          elMsg.textContent = "Could not save (check API/CORS).";
+        });
+    }
+  }
+
+  elStart.addEventListener("click", start);
+  elReset.addEventListener("click", () => reset("Ready."));
+  elArena.addEventListener("click", arenaClick);
+  elRefresh.addEventListener("click", refreshLeaderboard);
+
+  // initial load
+  refreshLeaderboard();
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+name: Deploy Reaction Game
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      # ✅ Install backend deps
+      - name: Install API dependencies
+        run: |
+          cd api
+          npm install
+
+      # ✅ Deploy Function App
+      - name: Deploy Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: func-game-cufgf5bgdvgbceb6
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+          package: ./api
+
+      # ✅ Upload frontend to storage
+      - name: Upload frontend
+        run: |
+          az storage blob upload-batch \
+            --account-name storage4game4ali \
+            --destination '$web' \
+            --source ./frontend \
+            --account-key ${{ secrets.AZURE_STORAGE_KEY }} \
+            --overwrite
